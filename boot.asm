@@ -47,15 +47,6 @@ kernel_load_error:
     call print_error
     jmp $
 
-kernel_crash:
-    ; Set video mode back to text mode if needed
-    mov ax, 0x0003
-    int 0x10
-    
-    mov si, KERNEL_CRASH_MSG
-    call print_error
-    jmp $                          ; Halt system after crash
-
 ; Function to print error message
 print_error:
     mov ah, 0x0e                    ; BIOS teletype output
@@ -70,7 +61,7 @@ print_error:
 
 BOOT_DISK: db 0
 KERNEL_ERROR_MSG: db 'Failed to load kernel!', 0
-KERNEL_CRASH_MSG: db 'Kernel crash detected! System halted.', 0
+KERNEL_CRASH_MSG: db 'KERNEL CRASH: System halted!', 0
 
 GDT_start:
     GDT_null:
@@ -81,8 +72,8 @@ GDT_start:
         dw 0xffff                   ; Segment limit first 0-15 bits
         dw 0x0                      ; Base first 0-15 bits
         db 0x0                      ; Base 16-23 bits
-        db 0b10011010              ; Access byte
-        db 0b11001111              ; High 4 bit flags and low 4 bit flags
+        db 0b10011010               ; Access byte
+        db 0b11001111               ; High 4 bit flags and low 4 bit flags
         db 0x0                      ; Base 24-31 bits
 
     GDT_data:                       ; DS, SS, ES, FS, GS
@@ -113,52 +104,70 @@ start_protected_mode:
     mov ebp, 0x90000
     mov esp, ebp
 
+    ; Set up IDT entries for exceptions
+    mov edi, 0x0                    ; First IDT entry
+    mov eax, exception_handler      ; Our handler address
+    mov cx, 32                      ; Set up handlers for first 32 exceptions
+    
+.setup_idt_loop:
+    mov word [edi], ax             ; Handler address low word
+    mov word [edi + 2], CODE_SEG   ; Kernel code segment
+    mov word [edi + 4], 0x8E00     ; Type: 32-bit interrupt gate
+    shr eax, 16
+    mov word [edi + 6], ax         ; Handler address high word
+    add edi, 8                     ; Next IDT entry
+    loop .setup_idt_loop
+
     ; Clear screen
-    mov edi, 0xB8000               ; Video memory address for text mode
+    mov edi, 0xB8000               ; Video memory address
     mov ecx, 80 * 25               ; 80x25 characters
-    mov eax, 0x0720                ; 0x07 is attribute (light grey on black), 0x20 is space
-    rep stosw                      ; Write to video memory, clear the screen
+    mov ax, 0x0720                 ; Normal attribute (gray on black)
+    rep stosw                      ; Clear screen
 
-    ; Print success message
-    mov edi, 0xB8000               ; Reset EDI to video memory start
-    mov esi, msg                   ; Load address of the message
-    call print_string
-
-    ; Set up exception handlers
-    mov eax, exception_handler
-    mov [0x0], eax                 ; Division by zero handler
-    mov [0x4], eax                 ; Debug exception
-    mov [0x8], eax                 ; NMI interrupt
-    mov [0xC], eax                 ; Breakpoint
-    mov [0x10], eax                ; Overflow
-    ; Add more exception handlers as needed
+    ; Print boot message
+    mov edi, 0xB8000
+    mov esi, boot_msg
+    call print_string_pm
 
     ; Jump to kernel
     jmp KERNEL_LOCATION
 
-; Exception handler in protected mode
+; Exception handler
 exception_handler:
-    mov edi, 0xB8000               ; Video memory address
-    mov esi, crash_msg             ; Load crash message
-    call print_string
-    cli                            ; Disable interrupts
-    hlt                            ; Halt the CPU
+    ; Save all registers
+    pushad
+    
+    ; Clear screen with error colors (red background)
+    mov edi, 0xB8000
+    mov ecx, 80 * 25
+    mov ax, 0x4F20                 ; White on red, space
+    rep stosw
+    
+    ; Print error message
+    mov edi, 0xB8000
+    mov esi, crash_msg
+    mov ah, 0x4F                   ; White on red attribute
+    call print_string_pm
+    
+    ; Halt the system
+    cli
+    hlt
+    jmp $                          ; In case of NMI
 
-; Function to print a string in protected mode
-print_string:
-    mov ah, 0x07                   ; Attribute byte (light grey on black)
-.next_char:
-    lodsb                          ; Load next character from [esi] into AL
-    test al, al                    ; Check if we hit the null terminator
-    jz .done                       ; If zero, end of string
-    stosw                          ; Store character and attribute in video memory
-    jmp .next_char                 ; Repeat for next character
+; Protected mode string printing
+print_string_pm:
+.loop:
+    lodsb                          ; Load next character
+    test al, al                    ; Check for null terminator
+    jz .done
+    mov [edi], ax                  ; Store character and attribute
+    add edi, 2                     ; Next character position
+    jmp .loop
 .done:
     ret
 
-msg db "etyOS Kernel Starter is in 32-bit mode", 0
-crash_msg db "KERNEL CRASH: System halted!", 0
+boot_msg db "etyOS Kernel Starter is in 32-bit mode", 0
+crash_msg db "etyOS KERNEL CRASH DETECTED! System halted.", 0
 
-; Boot sector padding
 times 510-($-$$) db 0
 dw 0xaa55

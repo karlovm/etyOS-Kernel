@@ -254,7 +254,7 @@ extern "C" void main() {
    
 
 
-    int io = 10 /0;
+    //int io = 10 /0;
     print_string("> ", get_cursor_row(), 0, GREEN_ON_BLACK);
 
     while (1) {
