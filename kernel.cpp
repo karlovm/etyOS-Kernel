@@ -195,7 +195,7 @@ void execute_command(const char* command) {
         print_newline();
     }
     else if (str_equals(command, "about")) {
-        print_string("etyOS - A bare metal operating system", get_cursor_row(), 0, CYAN_ON_BLACK);
+        print_string("etyOS Kernel - A bare metal operating system", get_cursor_row(), 0, CYAN_ON_BLACK);
         print_newline();
         print_string("Created by Mikhail Karlov", get_cursor_row(), 0, WHITE_ON_BLACK);
         print_newline();
@@ -252,6 +252,9 @@ extern "C" void main() {
     clear_screen();
   
    
+
+
+    int io = 10 /0;
     print_string("> ", get_cursor_row(), 0, GREEN_ON_BLACK);
 
     while (1) {
